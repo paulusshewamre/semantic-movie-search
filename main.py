@@ -24,6 +24,7 @@ def load_data():
     df = pd.read_csv("IMDB Dataset.csv")  
     # Keep only the first 500 rows for demo (optional)
     df = df.head(500)
+    df['review'] = df['review'].str.replace('<br />', ' ', regex=False)
     # Use the 'review' column as documents
     documents = df['review'].tolist()
     return documents
