@@ -4,9 +4,8 @@ from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
 import pandas as pd
 
-# -------------------------------------------------
-# 1️⃣ Load Model
-# -------------------------------------------------
+
+#load model
 @st.cache_resource
 def load_model():
     model = SentenceTransformer('all-MiniLM-L6-v2')
@@ -14,9 +13,7 @@ def load_model():
 
 model = load_model()
 
-# -------------------------------------------------
-# 2️⃣ Load Kaggle Dataset
-# -------------------------------------------------
+#load data
 @st.cache_data
 def load_data():
     # Replace the path with your downloaded Kaggle CSV file
@@ -38,12 +35,11 @@ def compute_embeddings(documents):
 
 doc_embeddings = compute_embeddings(documents)
 
-# -------------------------------------------------
-# 3️⃣ Streamlit App UI
-# -------------------------------------------------
+# Streamlit UI
 st.set_page_config(page_title="Semantic Search Demo", layout="wide")
 st.title("🔍 Semantic Search Engine")
 st.write("Type a question or keyword, and the system will find the most semantically relevant documents from IMDB reviews.")
+
 
 # User input
 query = st.text_input("Enter your query:", placeholder="e.g., a movie with great acting")
@@ -55,7 +51,7 @@ if query:
     # Compute similarities
     similarities = cosine_similarity(query_embedding, doc_embeddings).flatten()
     top_indices = np.argsort(similarities)[::-1]
-    
+
     # Display top results
     st.subheader("Top Relevant Reviews:")
     for idx in top_indices[:5]:  # Show top 5
@@ -65,9 +61,9 @@ if query:
         ---
         """)
 
-st.sidebar.header("ℹ️ About")
+st.sidebar.header("About")
 st.sidebar.markdown("""
-This is a **semantic search demo** built with:
+This is a **semantic search app** built with:
 - [Sentence Transformers](https://www.sbert.net/)
 - [Streamlit](https://streamlit.io)
 - [Scikit-learn](https://scikit-learn.org)
