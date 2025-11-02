@@ -1,6 +1,7 @@
 import streamlit as st
 from sentence_transformers import SentenceTransformer
-from sklearn.metrics.pairwise import cosine_similarity
+from qdrant_client import QdrantClient
+from qdrant_client.models import PointStruct, Distance, VectorParams
 import numpy as np
 import pandas as pd
 
@@ -16,48 +17,77 @@ model = load_model()
 #load data
 @st.cache_data
 def load_data():
-    # Replace the path with your downloaded Kaggle CSV file
-    # Example: "datasets/IMDB Dataset.csv"
-    df = pd.read_csv("IMDB Dataset.csv")  
-    # Keep only the first 500 rows for demo (optional)
+    df = pd.read_csv("./data/IMDB Dataset.csv")
     df = df.head(500)
     df['review'] = df['review'].str.replace('<br />', ' ', regex=False)
-    # Use the 'review' column as documents
     documents = df['review'].tolist()
     return documents
 
 documents = load_data()
 
-# Precompute document embeddings
+
+# Connect to Qdrant 
 @st.cache_resource
-def compute_embeddings(documents):
-    return model.encode(documents, show_progress_bar=True)
+def get_qdrant_client():
+    client = QdrantClient(host="localhost", port=6333)
+    return client
 
-doc_embeddings = compute_embeddings(documents)
+client = get_qdrant_client()
 
-# Streamlit UI
-st.set_page_config(page_title="Semantic Search Demo", layout="wide")
-st.title("🔍 Semantic Search Engine")
-st.write("Type a question or keyword, and the system will find the most semantically relevant documents from IMDB reviews.")
+collection_name = "imdb_reviews"
 
 
-# User input
+# Create Collection if Not Exists
+if collection_name not in [col.name for col in client.get_collections().collections]:
+    client.create_collection(
+        collection_name=collection_name,
+        vectors_config=VectorParams(size=384, distance=Distance.COSINE)
+    )
+
+
+# Upload embeddings to Qdrant (only once)
+@st.cache_resource
+def upload_embeddings():
+    doc_embeddings = model.encode(documents, show_progress_bar=True)
+
+    # Prepare points for upload
+    points = [
+        PointStruct(id=i, vector=doc_embeddings[i].tolist(), payload={"review": documents[i]})
+        for i in range(len(documents))
+    ]
+
+    # Upsert to Qdrant
+    client.upsert(collection_name=collection_name, points=points)
+    return True
+
+upload_embeddings()
+
+
+# Streamlit App
+st.set_page_config(page_title="Semantic Search with Qdrant", layout="wide")
+st.title("🔍 Semantic Search Engine (with Qdrant)")
+st.write("Type a query below to find the most semantically relevant IMDB reviews.")
+
+
+# querying qdrant
 query = st.text_input("Enter your query:", placeholder="e.g., a movie with great acting")
 
 if query:
-    # Encode query
-    query_embedding = model.encode([query])
-    
-    # Compute similarities
-    similarities = cosine_similarity(query_embedding, doc_embeddings).flatten()
-    top_indices = np.argsort(similarities)[::-1]
+    query_vector = model.encode([query])[0].tolist()
+
+    # Search in Qdrant
+    results = client.search(
+        collection_name=collection_name,
+        query_vector=query_vector,
+        limit=5,
+    )
 
     # Display top results
     st.subheader("Top Relevant Reviews:")
-    for idx in top_indices[:5]:  # Show top 5
+    for hit in results:
         st.markdown(f"""
-        **Review:** {documents[idx]}  
-        **Similarity:** {similarities[idx]:.3f}
+        **Review:** {hit.payload['review']}  
+        **Score:** {hit.score:.3f}
         ---
         """)
 
@@ -65,6 +95,7 @@ st.sidebar.header("About")
 st.sidebar.markdown("""
 This is a **semantic search app** built with:
 - [Sentence Transformers](https://www.sbert.net/)
+- [Qdrant](https://qdrant.tech)
 - [Streamlit](https://streamlit.io)
 - [Scikit-learn](https://scikit-learn.org)
 - Kaggle dataset: [IMDB Movie Reviews](https://www.kaggle.com/datasets/lakshmi25npathi/imdb-dataset-of-50k-movie-reviews)
